@@ -20,7 +20,7 @@ static stHash *getLeafToSpecies(stTree *geneTree, stTree *speciesTree, stHash *l
 
 // Collapses internal nodes that have a single child.  Necessary since
 // reconciliation is binary-only and we sometimes have a (somewhat
-// sloppily-) induced tree.
+// sloppily-) induced tree with degree-2 nodes.
 static stTree *collapseUnnecessaryNodes(stTree *tree, double addToBranchLength)
 {
     if (stTree_getChildNumber(tree) == 1) {
@@ -34,6 +34,41 @@ static stTree *collapseUnnecessaryNodes(stTree *tree, double addToBranchLength)
         }
         return ret;
     }
+}
+
+static bool isBinaryTree(stTree *tree)
+{
+    int64_t numChildren = stTree_getChildNumber(tree);
+    if (numChildren != 0 && numChildren != 2) {
+        return false;
+    }
+    for (int64_t i = 0; i < numChildren; i++) {
+        stTree *child = stTree_getChild(tree, i);
+        if (!isBinaryTree(child)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// Binarizes a tree that is at least binary (i.e. has at least 2
+// children for every internal node).
+static void arbitrarilyBinarize(stTree *tree)
+{
+    int64_t numChildren = stTree_getChildNumber(tree);
+    assert(numChildren >= 2);
+    if (isBinaryTree(tree)) {
+        return;
+    }
+
+    for (int64_t i = 0; i < numChildren - 2; i++) {
+        stTree *newNode = stTree_construct();
+        stTree_setBranchLength(newNode, 0.0);
+        stTree_setParent(newNode, tree);
+        stTree_setParent(stTree_getChild(tree, 0), newNode);
+        stTree_setParent(stTree_getChild(tree, 0), newNode);
+    }
+    assert(stTree_getChildNumber(tree) == 2);
 }
 
 // Collapse internal nodes if they and their children have the same name.
@@ -70,8 +105,9 @@ static bool collapseIdenticalAncestors(stTree *tree)
 int main(int argc, char *argv[])
 {
     int collapseIdenticalNodes = 0;
+    int reRoot = 0;
     if (argc < 4) {
-        fprintf(stderr, "Usage: %s gene2species geneTree speciesTree [collapseIdenticalNodes=0]\n", argv[0]);
+        fprintf(stderr, "Usage: %s gene2species geneTree speciesTree [collapseIdenticalNodes=0] [reRoot=0]\n", argv[0]);
         return 1;
     }
 
@@ -89,12 +125,25 @@ int main(int argc, char *argv[])
 
     stTree *geneTree = stTree_parseNewickString(argv[2]);
     geneTree = collapseUnnecessaryNodes(geneTree, 0.0);
+    if (!isBinaryTree(geneTree)) {
+        fprintf(stderr, "WARNING: arbitrarily binarizing multifurcated tree. This is "
+                "fine if you are rerooting a trifurcated (unrooted) tree, but is bad "
+                "otherwise.\n");
+        arbitrarilyBinarize(geneTree);
+    }
     stTree *speciesTree = stTree_parseNewickString(argv[3]);
     stHash *leafToSpecies = getLeafToSpecies(geneTree, speciesTree, leafNameToSpeciesName);
     stPinchPhylogeny_reconcileAndLabelBinary(geneTree, speciesTree, leafToSpecies);
 
     if (argc > 4) {
         sscanf(argv[4], "%d", &collapseIdenticalNodes);
+    }
+    if (argc > 5) {
+        sscanf(argv[5], "%d", &reRoot);
+    }
+
+    if (reRoot) {
+        geneTree = stPinchPhylogeny_reconcileBinary(geneTree, speciesTree, leafToSpecies);
     }
 
     if (collapseIdenticalNodes) {

@@ -15,7 +15,7 @@ static CLParserPtr initParser()
   optionsParser->addArgument("genome", "reference genome");
   optionsParser->addOption("refSequence", "reference sequence name (by default, a random column will be sampled)", "");
   optionsParser->addOption("refPos", "position (only valid if also using --sequence)", -1);
-  optionsParser->addOption("width", "width of the region around the sampled column to extract, default = 1000", 1000);
+  optionsParser->addOption("width", "width of the region around the sampled column to extract, default = 500", 500);
   return optionsParser;
 }
 

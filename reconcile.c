@@ -1,3 +1,6 @@
+// Reconcile a gene tree with respect to a species tree, and,
+// optionally, collapse duplication nodes to make a multifurcated
+// tree.
 #include <stdlib.h>
 #include <math.h>
 #include "sonLib.h"
@@ -56,10 +59,10 @@ static bool isBinaryTree(stTree *tree)
 static void arbitrarilyBinarize(stTree *tree)
 {
     int64_t numChildren = stTree_getChildNumber(tree);
-    assert(numChildren >= 2);
     if (isBinaryTree(tree)) {
         return;
     }
+    assert(numChildren >= 2);
 
     for (int64_t i = 0; i < numChildren - 2; i++) {
         stTree *newNode = stTree_construct();
@@ -69,6 +72,9 @@ static void arbitrarilyBinarize(stTree *tree)
         stTree_setParent(stTree_getChild(tree, 0), newNode);
     }
     assert(stTree_getChildNumber(tree) == 2);
+    for (int64_t i = 0; i < 2; i++) {
+        arbitrarilyBinarize(stTree_getChild(tree, i));
+    }
 }
 
 // Collapse internal nodes if they and their children have the same name.
@@ -130,10 +136,10 @@ int main(int argc, char *argv[])
                 "fine if you are rerooting a trifurcated (unrooted) tree, but is bad "
                 "otherwise.\n");
         arbitrarilyBinarize(geneTree);
+        assert(isBinaryTree(geneTree));
     }
     stTree *speciesTree = stTree_parseNewickString(argv[3]);
     stHash *leafToSpecies = getLeafToSpecies(geneTree, speciesTree, leafNameToSpeciesName);
-    stPinchPhylogeny_reconcileAndLabelBinary(geneTree, speciesTree, leafToSpecies);
 
     if (argc > 4) {
         sscanf(argv[4], "%d", &collapseIdenticalNodes);
@@ -143,8 +149,13 @@ int main(int argc, char *argv[])
     }
 
     if (reRoot) {
+        // If we actually cared about memory leaks this would be bad
         geneTree = stPinchPhylogeny_reconcileBinary(geneTree, speciesTree, leafToSpecies);
+        // Need to refresh the leafToSpecies map to correspond to the new tree
+        leafToSpecies = getLeafToSpecies(geneTree, speciesTree, leafNameToSpeciesName);
     }
+
+    stPinchPhylogeny_reconcileAndLabelBinary(geneTree, speciesTree, leafToSpecies);
 
     if (collapseIdenticalNodes) {
         collapseIdenticalAncestors(geneTree);

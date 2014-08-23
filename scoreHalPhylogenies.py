@@ -6,6 +6,32 @@ from argparse import ArgumentParser
 from jobTree.scriptTree.target import Target
 from jobTree.scriptTree.stack import Stack
 from sonLib.bioio import system, getTempFile, popenCatch
+import random
+
+def getChromSizes(halPath, genome):
+    """Get a dictionary of (chrom name):(chrom size) from a hal file."""
+    output = popenCatch("halStats --chromSizes %s %s" % (genome, halPath))
+    ret = {}
+    for line in output.split("\n"):
+        print line
+        fields = line.split("\t")
+        if len(fields) != 2:
+            continue
+        ret[fields[0]] = int(fields[1])
+    return ret
+
+def samplePosition(chromSizes):
+    """Get a random (sequence, position) pair from a chromSizes dict. Very
+    inefficient, but it shouldn't matter much.
+    """
+    genomeSize = sum(chromSizes.values()) # could pull this outside the function easily
+    genomePos = random.randint(0, genomeSize - 1)
+    curSize = 0
+    for seq, size in chromSizes.items():
+        if genomePos < curSize + size:
+            return (seq, genomePos - curSize)
+        curSize += size
+    assert False
 
 class Setup(Target):
     """Launch the sampling jobs and send the scores to the output
@@ -16,22 +42,28 @@ class Setup(Target):
 
     def run(self):
         speciesTree = popenCatch("halStats --tree %s" % (self.opts.halFile)).strip()
+        chromSizes = getChromSizes(self.opts.halFile, self.opts.refGenome)
 
         outputFile = getTempFile(rootDir=self.getGlobalTempDir())
         for i in xrange(self.opts.numSamples):
-            self.addChildTarget(SampleAndScoreColumn(self.opts, outputFile,
+            # Have to sample the columns here since otherwise it can
+            # be difficult to independently seed several RNGs
+            position = samplePosition(chromSizes)
+            self.addChildTarget(ScoreColumn(self.opts, position,
+                                                     outputFile,
                                                      speciesTree))
 #        self.setFollowOnTarget(Output(self.opts, outputFile))
 
-class SampleAndScoreColumn(Target):
-    """Sample a column from the hal, realign the region surrounding the
+class ScoreColumn(Target):
+    """Get a column from the hal, realign the region surrounding the
     column, estimate a tree based on the realignment, then score the
     independently estimated tree against the one implied by the hal
     graph.
     """
-    def __init__(self, opts, outputFile, speciesTree):
+    def __init__(self, opts, position, outputFile, speciesTree):
         Target.__init__(self)
         self.opts = opts
+        self.position = position
         self.outputFile = outputFile
         self.speciesTree = speciesTree
 
@@ -41,7 +73,7 @@ class SampleAndScoreColumn(Target):
         while invalidColumn:
             invalidColumn = False
             # Sample a column.
-            fasta = popenCatch("./getRegionAroundSampledColumn %s %s" % (self.opts.halFile, self.opts.refGenome))
+            fasta = popenCatch("./getRegionAroundSampledColumn %s %s --refSequence %s --refPos %d" % (self.opts.halFile, self.opts.refGenome, self.position[0], self.position[1]))
             # Take out the tree (on the first line) in case the aligner is
             # picky (read: correct) about fasta parsing.
             fastaLines = fasta.split("\n")
@@ -94,7 +126,7 @@ if __name__ == '__main__':
     parser.add_argument('refGenome', help='reference genome')
     parser.add_argument('--numSamples', type=int,
                         help='Number of columns to sample',
-                        default=100)
+                        default=10)
     parser.add_argument('--width', type=int,
                         help='Width of region to extract around the'
                         ' sampled columns',  default=500)

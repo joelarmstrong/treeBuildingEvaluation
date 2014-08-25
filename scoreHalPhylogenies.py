@@ -6,7 +6,103 @@ from argparse import ArgumentParser
 from jobTree.scriptTree.target import Target
 from jobTree.scriptTree.stack import Stack
 from sonLib.bioio import system, getTempFile, popenCatch
+from sonLib.nxnewick import NXNewick
+from collections import namedtuple
+import math
 import random
+
+Coalescence = namedtuple('Coalescence', ['genome1', 'seq1', 'pos1', 'genome2', 'seq2', 'pos2', 'mrca'])
+
+def getMRCA(tree, id1, id2):
+    """Return the MRCA of two nodes in an NXTree."""
+    candidates1 = set([id1])
+    curNode = id1
+    while tree.hasParent(curNode):
+        curNode = tree.getParent(curNode)
+        candidates1.add(curNode)
+    curNode = id2
+    if curNode in candidates1:
+        return curNode
+    while tree.hasParent(curNode):
+        curNode = tree.getParent(curNode)
+        if curNode in candidates1:
+            return curNode
+    raise RuntimeError("No MRCA found for nodes %d and %d" % (id1, id2))
+
+def getNameToIdDict(tree):
+    """Get a mapping from name to id for an nxtree. Will be invalid if
+    changes are made to the tree.
+    """
+    ret = {}
+    for id in tree.postOrderTraversal():
+        if tree.hasName(id):
+            ret[tree.getName(id)] = id
+    return ret
+
+def getLeafNames(tree):
+    ret = []
+    for id in tree.postOrderTraversal():
+        if tree.hasName(id) and len(tree.getChildren(id)) == 0:
+            ret.append(tree.getName(id))
+    return ret
+
+def sampleCoalescences(tree, maxCoalescences):
+    def choose(n, k):
+        return math.factorial(n) / (math.factorial(k) * math.factorial(n - k))
+    nameToId = getNameToIdDict(tree)
+    validNames = getLeafNames(tree)
+    pairs = set()
+    if choose(len(validNames), 2) < maxCoalescences:
+        # Just iterate through every possible pair.
+        for i, name1 in enumerate(validNames[:-1]):
+            for name2 in validNames[i+1:]:
+                pairs.add((name1, name2))
+    else:
+        # Sample maxCoalescences pairs.
+        numSamples = 0
+        while numSamples < maxCoalescences:
+            pair = random.sample(validNames, 2)
+            pair = (pair[0], pair[1])
+            if pair not in pairs:
+                pairs.add(pair)
+                numSamples += 1
+
+    # Create coalescences out of the pairs
+    coalescences = []
+    for pair in pairs:
+        mrca = tree.getName(getMRCA(tree, nameToId[pair[0]], nameToId[pair[1]]))
+        # Relies on the sequences being named by
+        # getRegionAroundSampledColumn, i.e. genome.seq|pos
+        genome1 = pair[0].split("|")[0].split(".")[0]
+        seq1 = ".".join(pair[0].split("|")[0].split(".")[1:])
+        pos1 = pair[0].split("|")[1]
+        genome2 = pair[1].split("|")[0].split(".")[0]
+        seq2 = ".".join(pair[1].split("|")[0].split(".")[1:])
+        pos2 = pair[1].split("|")[1]
+        coalescence = Coalescence(genome1=genome1, seq1=seq1, pos1=pos1,
+                                  genome2=genome2, seq2=seq2, pos2=pos2,
+                                  mrca=mrca)
+        coalescences.append(coalescence)
+    return coalescences
+
+def matchCoalescences(tree, inputCoalescences):
+    """Find coalescences whose underlying pairs match the coalescences
+    provided."""
+    nameToId = getNameToIdDict(tree)
+    coalescences = []
+    for coalescence in inputCoalescences:
+        # Relies on the sequences being named by
+        # getRegionAroundSampledColumn, i.e. genome.seq|pos
+        name1 = "%s.%s|%s" % (coalescence.genome1, coalescence.seq1, coalescence.pos1)
+        name2 = "%s.%s|%s" % (coalescence.genome2, coalescence.seq2, coalescence.pos2)
+        id1 = nameToId[name1]
+        id2 = nameToId[name2]
+        mrca = tree.getName(getMRCA(tree, id1, id2))
+        coalescence = Coalescence(genome1=coalescence.genome1, seq1=coalescence.seq1, pos1=coalescence.pos1,
+                                  genome2=coalescence.genome2, seq2=coalescence.seq2, pos2=coalescence.pos2,
+                                  mrca=mrca)
+        coalescences.append(coalescence)
+    return coalescences
 
 def getChromSizes(halPath, genome):
     """Get a dictionary of (chrom name):(chrom size) from a hal file."""
@@ -44,47 +140,52 @@ class Setup(Target):
         speciesTree = popenCatch("halStats --tree %s" % (self.opts.halFile)).strip()
         chromSizes = getChromSizes(self.opts.halFile, self.opts.refGenome)
 
-        outputFile = getTempFile(rootDir=self.getGlobalTempDir())
+        positions = []
         for i in xrange(self.opts.numSamples):
             # Have to sample the columns here since otherwise it can
             # be difficult to independently seed several RNGs
-            position = samplePosition(chromSizes)
-            self.addChildTarget(ScoreColumn(self.opts, position,
-                                                     outputFile,
-                                                     speciesTree))
+            positions.append(samplePosition(chromSizes))
+
+        for sliceStart in xrange(0, self.opts.numSamples,
+                                 self.opts.samplesPerJob):
+            slice = positions[sliceStart:sliceStart + self.opts.samplesPerJob]
+            outputFile = getTempFile(rootDir=self.getGlobalTempDir())
+            self.addChildTarget(ScoreColumns(self.opts, slice,
+                                             outputFile, speciesTree))
 #        self.setFollowOnTarget(Output(self.opts, outputFile))
 
-class ScoreColumn(Target):
+class ScoreColumns(Target):
     """Get a column from the hal, realign the region surrounding the
     column, estimate a tree based on the realignment, then score the
     independently estimated tree against the one implied by the hal
     graph.
     """
-    def __init__(self, opts, position, outputFile, speciesTree):
+    def __init__(self, opts, positions, outputFile, speciesTree):
         Target.__init__(self)
         self.opts = opts
-        self.position = position
+        self.positions = positions
         self.outputFile = outputFile
         self.speciesTree = speciesTree
 
     def run(self):
+        for position in self.positions:
+            self.handleColumn(position)
+
+    def handleColumn(self, position):
         invalidColumn = True
-        fasta = None
-        while invalidColumn:
-            invalidColumn = False
-            # Sample a column.
-            fasta = popenCatch("./getRegionAroundSampledColumn %s %s --refSequence %s --refPos %d" % (self.opts.halFile, self.opts.refGenome, self.position[0], self.position[1]))
-            # Take out the tree (on the first line) in case the aligner is
-            # picky (read: correct) about fasta parsing.
-            fastaLines = fasta.split("\n")
-            halTree = fastaLines[0][1:] # Skip '#' character.
-            numSeqs = 0
-            for line in fastaLines:
-                if len(line) != 0 and line[0] == '>':
-                    numSeqs += 1
-            if numSeqs < 3:
-                invalidColumn = True
-            fasta = "\n".join(fastaLines[1:])
+        # Get the column.
+        fasta = popenCatch("./getRegionAroundSampledColumn %s %s --refSequence %s --refPos %d" % (self.opts.halFile, self.opts.refGenome, position[0], position[1]))
+        # Take out the tree (on the first line) in case the aligner is
+        # picky (read: correct) about fasta parsing.
+        fastaLines = fasta.split("\n")
+        halTree = fastaLines[0][1:] # Skip '#' character.
+        numSeqs = 0
+        for line in fastaLines:
+            if len(line) != 0 and line[0] == '>':
+                numSeqs += 1
+        if numSeqs < 3:
+            return
+        fasta = "\n".join(fastaLines[1:])
 
         # Align the region surrounding the column.
         alignInputPath = getTempFile(rootDir=self.getGlobalTempDir())
@@ -105,7 +206,7 @@ class ScoreColumn(Target):
         # our sequences are labeled as genome.species|centerPos.
         gene2speciesPath = getTempFile(rootDir=self.getGlobalTempDir())
         gene2speciesHandle = open(gene2speciesPath, 'w')
-        for line in fasta.split("\n"):
+        for line in fastaLines:
             if len(line) != 0 and line[0] == '>':
                 header = line[1:]
                 species = header.split(".")[0]
@@ -113,7 +214,48 @@ class ScoreColumn(Target):
         gene2speciesHandle.close()
 
         reconciled = popenCatch("./reconcile '%s' '%s' '%s' 1 1" % (gene2speciesPath, estimatedTree, self.speciesTree))
-        self.logToMaster(reconciled)
+
+        # Score the two trees
+        self.reportCorrectCoalescences(position, halTree, reconciled)
+        self.logToMaster(open(self.outputFile).read())
+
+    def reportCorrectCoalescences(self, position, halNewick, reconciledNewick):
+        output = open(self.outputFile, 'a')
+        hal = NXNewick().parseString(halNewick)
+        reconciled = NXNewick().parseString(reconciledNewick)
+        halCoalescences = sampleCoalescences(hal, self.opts.coalescencesPerSample)
+        reconciledCoalescences = matchCoalescences(reconciled, halCoalescences)
+        assert(len(halCoalescences) == len(reconciledCoalescences))
+        for halCoalescence, reconciledCoalescence in zip(halCoalescences, reconciledCoalescences):
+            assert(halCoalescence.genome1 == reconciledCoalescence.genome1)
+            assert(halCoalescence.seq1 == reconciledCoalescence.seq1)
+            assert(halCoalescence.pos1 == reconciledCoalescence.pos1)
+            assert(halCoalescence.genome2 == reconciledCoalescence.genome2)
+            assert(halCoalescence.seq2 == reconciledCoalescence.seq2)
+            assert(halCoalescence.pos2 == reconciledCoalescence.pos2)
+            result = None
+            if halCoalescence.mrca == reconciledCoalescence.mrca:
+                result = "identical"
+            else:
+                speciesTree = NXNewick().parseString(self.speciesTree)
+                nameToId = getNameToIdDict(speciesTree)
+                # Have to get rid of the sequence/position information
+                # in the hal MRCA
+                halMrca = halCoalescence.mrca.split(".")[0]
+                print halMrca
+                print nameToId
+                assert halMrca in nameToId
+                reconciledId = nameToId[reconciledCoalescence.mrca]
+                halId = nameToId[halMrca]
+                id = getMRCA(speciesTree, halId, reconciledId)
+                assert id == halId or id == reconciledId
+                if id == halId:
+                    # Late in hal relative to independent estimate
+                    result = "late"
+                else:
+                    # Early in hal relative to independent estimate
+                    result = "early"
+            output.write("%s\t%s\t%s\t%s\t%s\t%s\t%s\n" % (halCoalescence.genome1, halCoalescence.seq1, halCoalescence.pos1, halCoalescence.genome2, halCoalescence.seq2, halCoalescence.pos2, result))
 
 class Output(Target):
     pass
@@ -124,8 +266,15 @@ if __name__ == '__main__':
     Stack.addJobTreeOptions(parser)
     parser.add_argument('halFile', help='hal file')
     parser.add_argument('refGenome', help='reference genome')
+    parser.add_argument('outputFile', help='output XML file')
     parser.add_argument('--numSamples', type=int,
                         help='Number of columns to sample',
+                        default=1000)
+    parser.add_argument('--samplesPerJob', type=int,
+                        help='Number of samples per jobTree job',
+                        default=70)
+    parser.add_argument('--coalescencesPerSample', type=int,
+                        help='maximum number of coalescences to sample per column',
                         default=10)
     parser.add_argument('--width', type=int,
                         help='Width of region to extract around the'

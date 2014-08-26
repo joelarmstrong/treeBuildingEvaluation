@@ -7,7 +7,7 @@ from jobTree.scriptTree.target import Target
 from jobTree.scriptTree.stack import Stack
 from sonLib.bioio import system, getTempFile, popenCatch
 from sonLib.nxnewick import NXNewick
-from collections import namedtuple
+from collections import namedtuple, defaultdict
 import math
 import random
 
@@ -146,13 +146,15 @@ class Setup(Target):
             # be difficult to independently seed several RNGs
             positions.append(samplePosition(chromSizes))
 
+        outputs = []
         for sliceStart in xrange(0, self.opts.numSamples,
                                  self.opts.samplesPerJob):
             slice = positions[sliceStart:sliceStart + self.opts.samplesPerJob]
             outputFile = getTempFile(rootDir=self.getGlobalTempDir())
+            outputs.append(outputFile)
             self.addChildTarget(ScoreColumns(self.opts, slice,
                                              outputFile, speciesTree))
-#        self.setFollowOnTarget(Output(self.opts, outputFile))
+        self.setFollowOnTarget(Summarize(self.opts, outputs, self.opts.outputFile))
 
 class ScoreColumns(Target):
     """Get a column from the hal, realign the region surrounding the
@@ -217,7 +219,6 @@ class ScoreColumns(Target):
 
         # Score the two trees
         self.reportCorrectCoalescences(position, halTree, reconciled)
-        self.logToMaster(open(self.outputFile).read())
 
     def reportCorrectCoalescences(self, position, halNewick, reconciledNewick):
         output = open(self.outputFile, 'a')
@@ -249,7 +250,9 @@ class ScoreColumns(Target):
                 halId = nameToId[halMrca]
                 id = getMRCA(speciesTree, halId, reconciledId)
                 assert id == halId or id == reconciledId
-                if id == halId:
+                if reconciledId == halId:
+                    result = "identical"
+                elif id == halId:
                     # Late in hal relative to independent estimate
                     result = "late"
                 else:
@@ -257,8 +260,73 @@ class ScoreColumns(Target):
                     result = "early"
             output.write("%s\t%s\t%s\t%s\t%s\t%s\t%s\n" % (halCoalescence.genome1, halCoalescence.seq1, halCoalescence.pos1, halCoalescence.genome2, halCoalescence.seq2, halCoalescence.pos2, result))
 
-class Output(Target):
-    pass
+class CoalescenceResults:
+    # Can't use namedtuple since tuples are immutable
+    def __init__(self, identical=0, early=0, late=0):
+        self.identical = 0
+        self.early = 0
+        self.late = 0
+
+def defaultCoalescenceResults():
+    return CoalescenceResults(0, 0, 0)
+
+class Summarize(Target):
+    """Merge the many output files into one large output file."""
+    def __init__(self, opts, outputs, outputFile):
+        Target.__init__(self)
+        self.opts = opts
+        self.outputs = outputs
+        self.outputFile = outputFile
+
+    def run(self):
+        for output in self.outputs:
+            results = defaultdict(lambda: defaultdict(defaultCoalescenceResults))
+            results["aggregate"] = defaultCoalescenceResults()
+            for line in open(output):
+                fields = line.strip().split("\t")
+                genome1 = fields[0]
+                seq1 = fields[1]
+                pos1 = fields[2]
+                genome2 = fields[3]
+                seq2 = fields[4]
+                pos2 = fields[5]
+                result = fields[6]
+                if result == "identical":
+                    results["aggregate"].identical += 1
+                    results[genome1]["aggregate"].identical += 1
+                    results[genome2]["aggregate"].identical += 1
+                    results[genome1][genome2].identical += 1
+                elif result == "early":
+                    results["aggregate"].early += 1
+                    results[genome1]["aggregate"].early += 1
+                    results[genome2]["aggregate"].early += 1
+                    results[genome1][genome2].early += 1
+                else:
+                    assert result == "late"
+                    results["aggregate"].late += 1
+                    results[genome1]["aggregate"].late += 1
+                    results[genome2]["aggregate"].late += 1
+                    results[genome1][genome2].late += 1
+        with open(self.outputFile, 'w') as outputFile:
+            outputFile.write('<coalescenceTest file="%s">\n' % (self.opts.halFile))
+            self.printAggregateResults(outputFile, results["aggregate"])
+            for genome1 in results.keys():
+                if genome1 == "aggregate":
+                    continue
+                outputFile.write('<genomeCoalescenceTest genome="%s">\n' % (genome1))
+                self.printAggregateResults(outputFile, results[genome1]["aggregate"])
+                for genome2 in results[genome1]:
+                    self.printGenomeResults(outputFile, genome1, genome2, results[genome1][genome2])
+                outputFile.write('</genomeCoalescenceTest>\n')
+            outputFile.write('</coalescenceTest>\n')
+
+    def printAggregateResults(self, outputFile, results):
+        total = results.identical + results.early + results.late
+        outputFile.write('<aggregateCoalescenceResults identical="%d" early="%d" late="%d" identicalFraction="%f" earlyFraction="%f" lateFraction="%f" />\n' % (results.identical, results.early, results.late, float(results.identical)/total, float(results.early)/total, float(results.late)/total))
+
+    def printGenomeResults(self, outputFile, genomeName1, genomeName2, results):
+        total = results.identical + results.early + results.late
+        outputFile.write('<coalescenceResults genome1="%s" genome2="%s" identical="%d" early="%d" late="%d" identicalFraction="%f" earlyFraction="%f" lateFraction="%f" />\n' % (genomeName1, genomeName2, results.identical, results.early, results.late, float(results.identical)/total, float(results.early)/total, float(results.late)/total))
 
 if __name__ == '__main__':
     from scoreHalPhylogenies import * # required for jobTree
@@ -272,7 +340,7 @@ if __name__ == '__main__':
                         default=1000)
     parser.add_argument('--samplesPerJob', type=int,
                         help='Number of samples per jobTree job',
-                        default=70)
+                        default=100)
     parser.add_argument('--coalescencesPerSample', type=int,
                         help='maximum number of coalescences to sample per column',
                         default=10)

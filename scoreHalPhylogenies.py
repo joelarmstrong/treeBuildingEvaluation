@@ -109,7 +109,6 @@ def getChromSizes(halPath, genome):
     output = popenCatch("halStats --chromSizes %s %s" % (genome, halPath))
     ret = {}
     for line in output.split("\n"):
-        print line
         fields = line.split("\t")
         if len(fields) != 2:
             continue
@@ -243,8 +242,6 @@ class ScoreColumns(Target):
                 # Have to get rid of the sequence/position information
                 # in the hal MRCA
                 halMrca = halCoalescence.mrca.split(".")[0]
-                print halMrca
-                print nameToId
                 assert halMrca in nameToId
                 reconciledId = nameToId[reconciledCoalescence.mrca]
                 halId = nameToId[halMrca]

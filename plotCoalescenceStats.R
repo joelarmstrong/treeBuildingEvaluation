@@ -24,10 +24,12 @@ getCoalescenceResults <- function(xmlPath, name) {
 
     combined <- rbind(genomeResults, genomeAggregateResults, aggregateResults)
     combined$name <- rep(name, length(combined$genome1))
+    combined <- transform(combined, identical=as.numeric(as.character(identical)), late=as.numeric(as.character(late)), early=as.numeric(as.character(early)),
+              identicalFraction=as.numeric(as.character(identicalFraction)), lateFraction=as.numeric(as.character(lateFraction)), earlyFraction=as.numeric(as.character(earlyFraction)))
     return(combined)
 }
 
 df <- rbind(getCoalescenceResults("development.xml", "Development"), getCoalescenceResults("bestRecon_10trees_3out_nucLikelihood_1.0breakpoint.xml", "Breakpoint1.0"), getCoalescenceResults("bestRecon_10trees_3out_nucLikelihood_5.0breakpoint.xml", "Breakpoint5.0"), getCoalescenceResults("bestRecon_10trees_3out_nucLikelihood_noBreakpoint.xml", "Breakpoint0.0"))
 pdf("test.pdf")
-print(ggplot(subset(df, genome1 == "aggregate"), aes(y=identicalFraction, x=name)) + geom_bar(stat="identity") + xlim(0.0, 1.0) + theme_classic())
+print(ggplot(subset(df, genome1 == "aggregate"), aes(y=identicalFraction, x=name)) + geom_bar(stat="identity") + theme_classic())
 dev.off()

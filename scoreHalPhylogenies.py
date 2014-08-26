@@ -173,13 +173,14 @@ class ScoreColumns(Target):
             self.handleColumn(position)
 
     def handleColumn(self, position):
-        invalidColumn = True
         # Get the column.
         fasta = popenCatch("./getRegionAroundSampledColumn %s %s --refSequence %s --refPos %d" % (self.opts.halFile, self.opts.refGenome, position[0], position[1]))
         # Take out the tree (on the first line) in case the aligner is
         # picky (read: correct) about fasta parsing.
         fastaLines = fasta.split("\n")
         halTree = fastaLines[0][1:] # Skip '#' character.
+        # Check that the fasta actually has enough sequences to bother
+        # with tree-building.
         numSeqs = 0
         for line in fastaLines:
             if len(line) != 0 and line[0] == '>':
@@ -234,27 +235,24 @@ class ScoreColumns(Target):
             assert(halCoalescence.seq2 == reconciledCoalescence.seq2)
             assert(halCoalescence.pos2 == reconciledCoalescence.pos2)
             result = None
-            if halCoalescence.mrca == reconciledCoalescence.mrca:
+            speciesTree = NXNewick().parseString(self.speciesTree)
+            nameToId = getNameToIdDict(speciesTree)
+            # Have to get rid of the sequence/position information
+            # in the hal MRCA
+            halMrca = halCoalescence.mrca.split(".")[0]
+            assert halMrca in nameToId
+            reconciledId = nameToId[reconciledCoalescence.mrca]
+            halId = nameToId[halMrca]
+            id = getMRCA(speciesTree, halId, reconciledId)
+            assert id == halId or id == reconciledId
+            if reconciledId == halId:
                 result = "identical"
+            elif id == halId:
+                # Late in hal relative to independent estimate
+                result = "late"
             else:
-                speciesTree = NXNewick().parseString(self.speciesTree)
-                nameToId = getNameToIdDict(speciesTree)
-                # Have to get rid of the sequence/position information
-                # in the hal MRCA
-                halMrca = halCoalescence.mrca.split(".")[0]
-                assert halMrca in nameToId
-                reconciledId = nameToId[reconciledCoalescence.mrca]
-                halId = nameToId[halMrca]
-                id = getMRCA(speciesTree, halId, reconciledId)
-                assert id == halId or id == reconciledId
-                if reconciledId == halId:
-                    result = "identical"
-                elif id == halId:
-                    # Late in hal relative to independent estimate
-                    result = "late"
-                else:
-                    # Early in hal relative to independent estimate
-                    result = "early"
+                # Early in hal relative to independent estimate
+                result = "early"
             output.write("%s\t%s\t%s\t%s\t%s\t%s\t%s\n" % (halCoalescence.genome1, halCoalescence.seq1, halCoalescence.pos1, halCoalescence.genome2, halCoalescence.seq2, halCoalescence.pos2, result))
 
 class CoalescenceResults:
@@ -276,10 +274,11 @@ class Summarize(Target):
         self.outputFile = outputFile
 
     def run(self):
+        results = defaultdict(lambda: defaultdict(defaultCoalescenceResults))
+        results["aggregate"] = defaultCoalescenceResults()
         for output in self.outputs:
-            results = defaultdict(lambda: defaultdict(defaultCoalescenceResults))
-            results["aggregate"] = defaultCoalescenceResults()
             for line in open(output):
+                self.totalNumLines += 1
                 fields = line.strip().split("\t")
                 genome1 = fields[0]
                 seq1 = fields[1]
@@ -293,16 +292,19 @@ class Summarize(Target):
                     results[genome1]["aggregate"].identical += 1
                     results[genome2]["aggregate"].identical += 1
                     results[genome1][genome2].identical += 1
+                    results[genome2][genome1].identical += 1
                 elif result == "early":
                     results["aggregate"].early += 1
                     results[genome1]["aggregate"].early += 1
                     results[genome2]["aggregate"].early += 1
                     results[genome1][genome2].early += 1
+                    results[genome2][genome1].early += 1
                 else:
                     assert result == "late"
                     results["aggregate"].late += 1
                     results[genome1]["aggregate"].late += 1
                     results[genome2]["aggregate"].late += 1
+                    results[genome2][genome1].late += 1
                     results[genome1][genome2].late += 1
         with open(self.outputFile, 'w') as outputFile:
             outputFile.write('<coalescenceTest file="%s">\n' % (self.opts.halFile))
@@ -313,6 +315,8 @@ class Summarize(Target):
                 outputFile.write('<genomeCoalescenceTest genome="%s">\n' % (genome1))
                 self.printAggregateResults(outputFile, results[genome1]["aggregate"])
                 for genome2 in results[genome1]:
+                    if genome2 == "aggregate":
+                        continue
                     self.printGenomeResults(outputFile, genome1, genome2, results[genome1][genome2])
                 outputFile.write('</genomeCoalescenceTest>\n')
             outputFile.write('</coalescenceTest>\n')

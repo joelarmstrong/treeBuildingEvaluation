@@ -278,7 +278,6 @@ class Summarize(Target):
         results["aggregate"] = defaultCoalescenceResults()
         for output in self.outputs:
             for line in open(output):
-                self.totalNumLines += 1
                 fields = line.strip().split("\t")
                 genome1 = fields[0]
                 seq1 = fields[1]

@@ -231,7 +231,7 @@ int main(int argc, char *argv[])
             outputSeq[size] = '\0';
 
             stringstream header;
-            header << seq->getGenome()->getName() << "." << seq->getName() << "|" << midpoint;
+            header << seq->getGenome()->getName() << "." << seq->getName() << "|" << midpoint - seqStart;
             fastaWrite(outputSeq, (char *) header.str().c_str(), stdout);
         }
     }

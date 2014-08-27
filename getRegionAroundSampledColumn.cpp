@@ -30,8 +30,16 @@ static stTree *getTreeNode(SegmentIteratorConstPtr segIt)
     stTree *ret = stTree_construct();
     const Genome *genome = segIt->getGenome();
     const Sequence *seq = genome->getSequenceBySite(segIt->getStartPosition());
+
+    // make the sequence name safe for newick parsers (':'->'_')
+    string seqName = seq->getName();
+    hal_size_t i;
+    while ((i = seqName.find(":")) != string::npos) {
+        seqName[i] = '_';
+    }
+
     stringstream ss;
-    ss << segIt->getGenome()->getName() << "." << seq->getName() << "|" << segIt->getStartPosition() - seq->getStartPosition();
+    ss << segIt->getGenome()->getName() << "." << seqName << "|" << segIt->getStartPosition() - seq->getStartPosition();
     stTree_setLabel(ret, stString_copy(ss.str().c_str()));
 
     return ret;
@@ -230,8 +238,15 @@ int main(int argc, char *argv[])
             }
             outputSeq[size] = '\0';
 
+            // make the sequence name safe for newick parsers (':'->'_')
+            string seqName = seq->getName();
+            hal_size_t i;
+            while ((i = seqName.find(":")) != string::npos) {
+                seqName[i] = '_';
+            }
+
             stringstream header;
-            header << seq->getGenome()->getName() << "." << seq->getName() << "|" << midpoint - seqStart;
+            header << seq->getGenome()->getName() << "." << seqName << "|" << midpoint - seqStart;
             fastaWrite(outputSeq, (char *) header.str().c_str(), stdout);
         }
     }

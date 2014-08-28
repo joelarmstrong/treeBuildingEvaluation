@@ -13,8 +13,8 @@ getCoverageDataFrame <- function(path, name) {
     return(df)
 }
 
-df <- rbind.fill(getCoverageDataFrame("development_humanCoverage", "development"), getCoverageDataFrame("bestRecon_10trees_3out_nucLikelihood_1.0breakpoint_humanCoverage", "Breakpoint1.0"), getCoverageDataFrame("bestRecon_10trees_3out_nucLikelihood_5.0breakpoint_humanCoverage", "Breakpoint5.0"), getCoverageDataFrame("bestRecon_10trees_3out_nucLikelihood_noBreakpoint_humanCoverage", "Breakpoint0.0"))
+df <- rbind.fill(getCoverageDataFrame("development_humanCoverage", "development"), getCoverageDataFrame("bestRecon_10trees_3out_nucLikelihood_1.0breakpoint_humanCoverage", "Breakpoint1.0"), getCoverageDataFrame("longestBranch_10trees_3out_nucLikelihood_1.0breakpoint_humanCoverage", "longestBranchBreakpoint1.0"), getCoverageDataFrame("bestRecon_10trees_3out_reconScore_1.0breakpoint_humanCoverage", "reconScoreBreakpoint1.0"), getCoverageDataFrame("bestRecon_10trees_3out_nucLikelihood_5.0breakpoint_humanCoverage", "Breakpoint5.0"), getCoverageDataFrame("bestRecon_10trees_3out_nucLikelihood_noBreakpoint_humanCoverage", "Breakpoint0.0"))
 pdf("testCoverage.pdf")
-coveragePlot <- ggplot(df, aes(x=name, y=multiCoverageFraction, fill=name)) + geom_bar(stat="identity") + facet_grid(~ Genome) + theme_classic()
+coveragePlot <- ggplot(df, aes(x=name, y=coverageFraction, fill=name)) + geom_bar(stat="identity") + facet_grid(~ Genome) + theme_classic()
 print(coveragePlot)
 dev.off()

@@ -152,14 +152,14 @@ int main(int argc, char *argv[])
     CLParserPtr optParser = initParser();
     string halPath, genomeName, refSequenceName;
     hal_index_t refPos = -1;
-    hal_size_t width = 1000;
+    hal_index_t width = 1000;
     try {
         optParser->parseOptions(argc, argv);
         halPath = optParser->getArgument<string>("halFile");
         genomeName = optParser->getArgument<string>("genome");
         refSequenceName = optParser->getOption<string>("refSequence");
         refPos = optParser->getOption<hal_index_t>("refPos");
-        width = optParser->getOption<hal_size_t>("width");
+        width = optParser->getOption<hal_index_t>("width");
     } catch (exception &e) {
         cerr << e.what() << endl;
         optParser->printUsage(cerr);
@@ -217,8 +217,8 @@ int main(int argc, char *argv[])
             } else if (startPos >= seqEnd) {
                 startPos = seqEnd - 1;
             }
-            hal_size_t size = width * 2 + 1;
-            if (size >= seq->getSequenceLength()) {
+            hal_index_t size = width * 2 + 1;
+            if ((hal_size_t) size >= seq->getSequenceLength()) {
                 size = seqEnd - seqStart;
             }
 

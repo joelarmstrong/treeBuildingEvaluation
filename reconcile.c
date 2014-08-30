@@ -3,6 +3,7 @@
 // tree.
 #include <stdlib.h>
 #include <math.h>
+#include "bioioC.h"
 #include "sonLib.h"
 #include "stPinchPhylogeny.h"
 
@@ -150,12 +151,13 @@ int main(int argc, char *argv[])
 
     if (reRoot) {
         // If we actually cared about memory leaks this would be bad
-        geneTree = stPinchPhylogeny_reconcileBinary(geneTree, speciesTree, leafToSpecies);
+        geneTree = stPinchPhylogeny_rootAndReconcileBinary(geneTree, speciesTree, leafToSpecies);
         // Need to refresh the leafToSpecies map to correspond to the new tree
         leafToSpecies = getLeafToSpecies(geneTree, speciesTree, leafNameToSpeciesName);
     }
 
-    stPinchPhylogeny_reconcileAndLabelBinary(geneTree, speciesTree, leafToSpecies);
+    // relabel the ancestors.
+    stPinchPhylogeny_reconcileBinary(geneTree, speciesTree, leafToSpecies, true);
 
     if (collapseIdenticalNodes) {
         collapseIdenticalAncestors(geneTree);

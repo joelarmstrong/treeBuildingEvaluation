@@ -29,8 +29,8 @@ getCoalescenceResults <- function(xmlPath, name) {
     return(combined)
 }
 
-df <- rbind(getCoalescenceResults("development.xml", "Development"), getCoalescenceResults("bestRecon_10trees_3out_nucLikelihood_1.0breakpoint.xml", "Breakpoint1.0"), getCoalescenceResults("bestRecon_10trees_3out_nucLikelihood_5.0breakpoint.xml", "Breakpoint5.0"), getCoalescenceResults("bestRecon_10trees_3out_nucLikelihood_noBreakpoint.xml", "Breakpoint0.0"))
-pdf("test.pdf")
-coalescencePlot <- ggplot(subset(df, genome1 == "human" & genome2 != "aggregate"), aes(y=identicalFraction, x=name, fill=name)) + geom_bar(stat="identity") + facet_grid(~ genome2) + theme_classic()
-print(coalescencePlot)
-dev.off()
+# get a base ggplot2 plot comparing multiple coalescence results (in a
+# single data frame) against the same reference.
+getCoalescencePlot <- function(coalescenceResults, refGenome) {
+    return(ggplot(subset(coalescenceResults, genome1 == refGenome & genome2 != "aggregate"), aes(y=identicalFraction, x=name, fill=name)) + geom_bar(stat="identity") + facet_grid(~ genome2) + theme_classic())
+}

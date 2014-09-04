@@ -16,6 +16,6 @@ getCoverageDataFrame <- function(path, name) {
 # get a base ggplot2 plot comparing multiple coverage results (in a
 # single data frame).
 getCoveragePlot <- function(coverageResults) {
-    return(ggplot(coverageResults, aes(x=name, y=coverageFraction, fill=name)) + geom_bar(stat="identity") + facet_grid( ~ Genome)  + theme_classic())
+    return(ggplot(coverageResults, aes(x=name, y=coverageFraction, fill=name)) + geom_bar(stat="identity") + facet_grid( ~ Genome)  + theme_classic() + theme(axis.text.x=element_blank()))
 }
 

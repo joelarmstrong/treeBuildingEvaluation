@@ -32,5 +32,5 @@ getCoalescenceResults <- function(xmlPath, name) {
 # get a base ggplot2 plot comparing multiple coalescence results (in a
 # single data frame) against the same reference.
 getCoalescencePlot <- function(coalescenceResults, refGenome) {
-    return(ggplot(subset(coalescenceResults, genome1 == refGenome & genome2 != "aggregate"), aes(y=identicalFraction, x=name, fill=name)) + geom_bar(stat="identity") + facet_grid(~ genome2) + theme_classic())
+    return(ggplot(subset(coalescenceResults, genome1 == refGenome & genome2 != "aggregate"), aes(y=identicalFraction, x=name, fill=name)) + geom_bar(stat="identity") + facet_grid(~ genome2) + theme_classic() + theme(axis.text.x=element_blank()))
 }

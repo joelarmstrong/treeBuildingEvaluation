@@ -1,0 +1,7 @@
+((((human:0.00655, chimp:0.00684):0.00222, gorilla:0.008964):0.003471, orang:0.01894):0.01204, rhesus:0.035);
+
+human fasta/humanZnfCluster.fa
+chimp fasta/chimpZnfCluster.fa
+gorilla fasta/gorillaZnfCluster.fa
+orang fasta/orangZnfCluster.fa
+rhesus fasta/rhesusZnfCluster.fa

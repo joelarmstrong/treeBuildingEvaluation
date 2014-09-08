@@ -174,7 +174,7 @@ class ScoreColumns(Target):
 
     def handleColumn(self, position):
         # Get the column.
-        fasta = popenCatch("./getRegionAroundSampledColumn %s %s --refSequence %s --refPos %d" % (self.opts.halFile, self.opts.refGenome, position[0], position[1]))
+        fasta = popenCatch("getRegionAroundSampledColumn %s %s --refSequence %s --refPos %d" % (self.opts.halFile, self.opts.refGenome, position[0], position[1]))
         # Take out the tree (on the first line) in case the aligner is
         # picky (read: correct) about fasta parsing.
         fastaLines = fasta.split("\n")
@@ -215,7 +215,7 @@ class ScoreColumns(Target):
                 gene2speciesHandle.write("%s\t%s\n" % (header, species))
         gene2speciesHandle.close()
 
-        reconciled = popenCatch("./reconcile '%s' '%s' '%s' 1 1" % (gene2speciesPath, estimatedTree, self.speciesTree))
+        reconciled = popenCatch("reconcile '%s' '%s' '%s' 1 1" % (gene2speciesPath, estimatedTree, self.speciesTree))
 
         # Score the two trees
         self.reportCorrectCoalescences(position, halTree, reconciled)
@@ -337,7 +337,7 @@ if __name__ == '__main__':
     parser.add_argument('outputFile', help='output XML file')
     parser.add_argument('--numSamples', type=int,
                         help='Number of columns to sample',
-                        default=1000)
+                        default=50000)
     parser.add_argument('--samplesPerJob', type=int,
                         help='Number of samples per jobTree job',
                         default=100)

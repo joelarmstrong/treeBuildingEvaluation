@@ -38,7 +38,8 @@
                    trimMinSize="100"
                    trimThreshold="1.0"
                    trimWindowSize="1"
-                   trimOutgroupFlanking="2000"/>
+                   trimOutgroupFlanking="2000"
+                   keepParalogs="0"/>
 	<ktserver memory="mediumMemory"/>
 	<setup makeEventHeadersAlphaNumeric="0"/>
 	<!-- The caf tag contains parameters for the caf algorithm. -->

@@ -18,10 +18,10 @@ all: $(HALS) $(COALESCENCES) $(COVERAGES) combined.pdf
 
 %/humanCoalescences.xml: %/znfChr19.hal
 	rm -fr $(@D)/jobTree
-	PATH=$(PATH):.. ../scoreHalPhylogenies.py --jobTree $(@D)/jobTree --maxThreads 8 $< human $@
+	PATH=$(PATH):.. ../scoreHalPhylogenies.py --jobTree $(@D)/jobTree --maxThreads 45 $< human $@
 
 %/humanCoverage: %/znfChr19.hal
 	halStats --inMemory --coverage human $< > $@
 
 combined.pdf: $(COALESCENCES) $(COVERAGES)
-	../plotCombinedStats.R $(subst $(SPACE),$(COMMA),$(COALESCENCES)) $(subst $(SPACE),$(COMMA),$(COVERAGES)) $(RUNS)
+	../plotCombinedStats.R $(subst $(SPACE),$(COMMA),$(COALESCENCES)) $(subst $(SPACE),$(COMMA),$(COVERAGES)) $(subst $(SPACE),$(COMMA),$(RUNS))

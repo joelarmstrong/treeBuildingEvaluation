@@ -28,6 +28,8 @@ getCoalescenceResults <- function(xmlPath, name) {
 
     combined <- rbind(genomeResults, genomeAggregateResults, aggregateResults)
     combined$name <- rep(name, length(combined$genome1))
+    # reorder name factors so they will appear in the order given
+    combined$name <- factor(combined$name, as.character(combined$name))
     combined <- transform(combined, identical=as.numeric(as.character(identical)), late=as.numeric(as.character(late)), early=as.numeric(as.character(early)),
               identicalFraction=as.numeric(as.character(identicalFraction)), lateFraction=as.numeric(as.character(lateFraction)), earlyFraction=as.numeric(as.character(earlyFraction)))
     return(combined)
@@ -47,6 +49,8 @@ getCoverageDataFrame <- function(path, name) {
     df$coverageFraction <- df$sitesMapping1Times / numRefSites
     df$multiCoverageFraction <- df$sitesMapping2Times / numRefSites
     df$name <- rep(name, length(df$Genome))
+    # reorder name factors so they will appear in the order given
+    df$name <- factor(df$name, as.character(df$name))
     return(df)
 }
 
@@ -63,9 +67,8 @@ coverages <- str_split(args[2], ",")
 stopifnot(length(coalescences) == length(coverages))
 if (length(args) > 2) {
     names <- unlist(str_split(args[3], ","))
-    stopifnot(length(coalescences) == length(names))
 } else {
-    names <- sapply(coalescences, basename)
+    names <- unlist(coalescences)
 }
 
 # get the coalescence data frames

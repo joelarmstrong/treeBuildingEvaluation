@@ -6,6 +6,7 @@ require(stringr)
 require(plyr)
 require(ggplot2)
 require(XML)
+require(reshape2)
 
 # Data frame: genome1 genome2 identical early late identicalFraction earlyFraction lateFraction name
 # Aggregate results are indicated by genome2="aggregate"
@@ -38,7 +39,8 @@ getCoalescenceResults <- function(xmlPath, name) {
 # get a base ggplot2 plot comparing multiple coalescence results (in a
 # single data frame) against the same reference.
 getCoalescencePlot <- function(coalescenceResults, refGenome) {
-    return(ggplot(subset(coalescenceResults, genome1 == refGenome & genome2 != "aggregate"), aes(y=identicalFraction, x=name, fill=name)) + geom_bar(stat="identity") + facet_grid(~ genome2) + theme_classic() + theme(axis.text.x=element_blank()))
+    meltedCoalResults <- melt(coalescenceResults, id.vars=c("genome1", "genome2", "name"), measure.vars=c("identicalFraction", "lateFraction", "earlyFraction"))
+    return(ggplot(subset(meltedCoalResults, genome1 == refGenome & genome2 != "aggregate"), aes(y=value, x=name, fill=variable)) + geom_bar(stat="identity") + facet_grid(~ genome2) + theme_classic())
 }
 
 # Get data frame with columns: genome, coverageFraction,
@@ -57,7 +59,7 @@ getCoverageDataFrame <- function(path, name) {
 # get a base ggplot2 plot comparing multiple coverage results (in a
 # single data frame).
 getCoveragePlot <- function(coverageResults) {
-    return(ggplot(coverageResults, aes(x=name, y=coverageFraction, fill=name)) + geom_bar(stat="identity") + facet_grid( ~ Genome)  + theme_classic() + theme(axis.text.x=element_blank()))
+    return(ggplot(coverageResults, aes(x=name, y=coverageFraction)) + geom_bar(stat="identity") + facet_grid( ~ Genome)  + theme_classic())
 }
 
 # parse args
@@ -93,9 +95,9 @@ print(coverageDfs)
 coverageDf <- rbind.fill(coverageDfs)
 
 print(coverageDf)
-coalescencePlot <- getCoalescencePlot(coalescenceDf, "human")
-coveragePlot <- getCoveragePlot(coverageDf)
+coalescencePlot <- getCoalescencePlot(coalescenceDf, "human") + theme(axis.text.x=element_text(angle=90, hjust=1, vjust=0.5)) + theme(legend.position="top")
+coveragePlot <- getCoveragePlot(coverageDf) + theme(axis.text.x=element_text(angle=90, hjust=1, vjust=0.5))
 
 pdf("combined.pdf", width=10, height=5)
-print(grid.arrange(coveragePlot, coalescencePlot))
+print(grid.arrange(coveragePlot, coalescencePlot, ncol=2))
 dev.off()

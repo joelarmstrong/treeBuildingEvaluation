@@ -40,7 +40,7 @@ getCoalescenceResults <- function(xmlPath, name) {
 # single data frame) against the same reference.
 getCoalescencePlot <- function(coalescenceResults, refGenome) {
     meltedCoalResults <- melt(coalescenceResults, id.vars=c("genome1", "genome2", "name"), measure.vars=c("identicalFraction", "lateFraction", "earlyFraction"))
-    return(ggplot(subset(meltedCoalResults, genome1 == refGenome & genome2 != "aggregate"), aes(y=value, x=name, fill=variable)) + geom_bar(stat="identity") + facet_grid(~ genome2) + theme_classic())
+    return(ggplot(subset(meltedCoalResults, genome1 == refGenome & genome2 != "aggregate"), aes(y=value, x=name, fill=variable)) + geom_bar(stat="identity") + facet_grid(~ genome2) + theme_classic() + scale_fill_brewer(type="qual", palette="Dark2"))
 }
 
 # Get data frame with columns: genome, coverageFraction,

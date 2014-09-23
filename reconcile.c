@@ -5,7 +5,6 @@
 #include <math.h>
 #include "bioioC.h"
 #include "sonLib.h"
-#include "stPinchPhylogeny.h"
 
 static stHash *getLeafToSpecies(stTree *geneTree, stTree *speciesTree, stHash *leafNameToSpeciesName)
 {
@@ -151,13 +150,13 @@ int main(int argc, char *argv[])
 
     if (reRoot) {
         // If we actually cared about memory leaks this would be bad
-        geneTree = stPinchPhylogeny_rootAndReconcileBinary(geneTree, speciesTree, leafToSpecies);
+        geneTree = stPhylogeny_rootAndReconcileBinary(geneTree, speciesTree, leafToSpecies);
         // Need to refresh the leafToSpecies map to correspond to the new tree
         leafToSpecies = getLeafToSpecies(geneTree, speciesTree, leafNameToSpeciesName);
     }
 
     // relabel the ancestors.
-    stPinchPhylogeny_reconcileBinary(geneTree, speciesTree, leafToSpecies, true);
+    stPhylogeny_reconcileBinary(geneTree, speciesTree, leafToSpecies, true);
 
     if (collapseIdenticalNodes) {
         collapseIdenticalAncestors(geneTree);

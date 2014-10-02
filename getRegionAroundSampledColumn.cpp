@@ -171,7 +171,7 @@ int main(int argc, char *argv[])
     AlignmentConstPtr alignment = openHalAlignment(halPath, optParser);
     const Genome *genome = alignment->openGenome(genomeName);
     if (genome == NULL) {
-        throw hal_exception("Genome " + genome->getName() + " not found in alignment");
+        throw hal_exception("Genome " + genomeName + " not found in alignment");
     }
 
     const Sequence *refSequence = NULL;

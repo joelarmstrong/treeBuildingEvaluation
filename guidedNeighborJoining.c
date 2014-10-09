@@ -17,7 +17,7 @@ static void populateHashes(const char *header, const char *seq, int64_t length)
 {
     // The genome is the first "."-separated token.
     stList *tokens = stString_splitByString(header, ".");
-    if (stList_length(tokens) != 2) {
+    if (stList_length(tokens) < 2) {
         st_errAbort("Header %s is not in UCSC genome.chr format.", header);
     }
     char *genome = stList_get(tokens, 0);

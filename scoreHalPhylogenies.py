@@ -153,12 +153,12 @@ class Setup(Target):
             outputs.append(outputFile)
             self.addChildTarget(ScoreColumns(self.opts, slice,
                                              outputFile, speciesTree))
-        self.setFollowOnTarget(Summarize(self.opts, outputs, self.opts.outputFile))
+        self.setFollowOnTarget(Summarize(self.opts, outputs, self.opts.outputFile, self.opts.writeMismatchesToFile))
 
 class ScoreColumns(Target):
     """Get a column from the hal, realign the region surrounding the
     column, estimate a tree based on the realignment, then score the
-    independently estimated tree against the one implied by the hal
+    independently estimated tree against the one in the hal
     graph.
     """
     def __init__(self, opts, positions, outputFile, speciesTree):
@@ -253,7 +253,9 @@ class ScoreColumns(Target):
             else:
                 # Early in hal relative to independent estimate
                 result = "early"
-            output.write("%s\t%s\t%s\t%s\t%s\t%s\t%s\n" % (halCoalescence.genome1, halCoalescence.seq1, halCoalescence.pos1, halCoalescence.genome2, halCoalescence.seq2, halCoalescence.pos2, result))
+            if result != "identical" and self.opts.writeMismatchesToFile:
+                output.write("mismatch\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" % (halCoalescence.genome1, halCoalescence.seq1, halCoalescence.pos1, halCoalescence.genome2, halCoalescence.seq2, halCoalescence.pos2, halNewick, reconciledNewick))
+            output.write("coalescence\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" % (halCoalescence.genome1, halCoalescence.seq1, halCoalescence.pos1, halCoalescence.genome2, halCoalescence.seq2, halCoalescence.pos2, result))
 
 class CoalescenceResults:
     # Can't use namedtuple since tuples are immutable
@@ -267,44 +269,59 @@ def defaultCoalescenceResults():
 
 class Summarize(Target):
     """Merge the many output files into one large output file."""
-    def __init__(self, opts, outputs, outputFile):
+    def __init__(self, opts, outputs, outputFile, mismatchPath):
         Target.__init__(self)
         self.opts = opts
         self.outputs = outputs
         self.outputFile = outputFile
+        self.mismatchPath = mismatchPath
 
     def run(self):
+        mismatchFile = None
+        if self.mismatchPath is not None:
+            mismatchFile = open(self.mismatchPath, 'w')
         results = defaultdict(lambda: defaultdict(defaultCoalescenceResults))
         results["aggregate"] = defaultCoalescenceResults()
         for output in self.outputs:
             for line in open(output):
+                if line.strip() == "":
+                    # blank line
+                    continue
                 fields = line.strip().split("\t")
-                genome1 = fields[0]
-                seq1 = fields[1]
-                pos1 = fields[2]
-                genome2 = fields[3]
-                seq2 = fields[4]
-                pos2 = fields[5]
-                result = fields[6]
-                if result == "identical":
-                    results["aggregate"].identical += 1
-                    results[genome1]["aggregate"].identical += 1
-                    results[genome2]["aggregate"].identical += 1
-                    results[genome1][genome2].identical += 1
-                    results[genome2][genome1].identical += 1
-                elif result == "early":
-                    results["aggregate"].early += 1
-                    results[genome1]["aggregate"].early += 1
-                    results[genome2]["aggregate"].early += 1
-                    results[genome1][genome2].early += 1
-                    results[genome2][genome1].early += 1
+                reportType = fields[0]
+                fields = fields[1:]
+                if reportType == "coalescence":
+                    genome1 = fields[0]
+                    seq1 = fields[1]
+                    pos1 = fields[2]
+                    genome2 = fields[3]
+                    seq2 = fields[4]
+                    pos2 = fields[5]
+                    result = fields[6]
+                    if result == "identical":
+                        results["aggregate"].identical += 1
+                        results[genome1]["aggregate"].identical += 1
+                        results[genome2]["aggregate"].identical += 1
+                        results[genome1][genome2].identical += 1
+                        results[genome2][genome1].identical += 1
+                    elif result == "early":
+                        results["aggregate"].early += 1
+                        results[genome1]["aggregate"].early += 1
+                        results[genome2]["aggregate"].early += 1
+                        results[genome1][genome2].early += 1
+                        results[genome2][genome1].early += 1
+                    else:
+                        assert result == "late"
+                        results["aggregate"].late += 1
+                        results[genome1]["aggregate"].late += 1
+                        results[genome2]["aggregate"].late += 1
+                        results[genome2][genome1].late += 1
+                        results[genome1][genome2].late += 1
                 else:
-                    assert result == "late"
-                    results["aggregate"].late += 1
-                    results[genome1]["aggregate"].late += 1
-                    results[genome2]["aggregate"].late += 1
-                    results[genome2][genome1].late += 1
-                    results[genome1][genome2].late += 1
+                    print "\"%s\"" % reportType
+                    print "%s" % line
+                    assert reportType == "mismatch"
+                    mismatchFile.write(line)
         with open(self.outputFile, 'w') as outputFile:
             outputFile.write('<coalescenceTest file="%s">\n' % (self.opts.halFile))
             self.printAggregateResults(outputFile, results["aggregate"])
@@ -355,6 +372,9 @@ if __name__ == '__main__':
                         ' where "INPUT" will be replaced with the input path'
                         ' and "OUTPUT" will be replaced with the output path',
                         default='fasttree -nt -gtr < INPUT > OUTPUT')
+    parser.add_argument('--writeMismatchesToFile',
+                        help="write trees to this file when at least one of "
+                        "the sampled coalescences don't match")
 
     opts = parser.parse_args()
     Stack(Setup(opts)).startJobTree(opts)

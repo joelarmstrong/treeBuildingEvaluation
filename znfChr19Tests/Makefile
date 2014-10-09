@@ -21,6 +21,7 @@ hubs: $(HUBS)
 %/humanCoalescences.xml: %/znfChr19.hal
 	rm -fr $(@D)/jobTree
 	PYTHONPATH=$(PYTHONPATH):.. PATH=$(PATH):.. ../scoreHalPhylogenies.py --jobTree $(@D)/jobTree $(JOBTREE_ARGS) $< human $@
+	rm -fr $(@D)/jobTree
 
 %/humanCoverage: %/znfChr19.hal
 	halStats --inMemory --coverage human $< > $@
@@ -28,6 +29,7 @@ hubs: $(HUBS)
 %/hub: %/znfChr19.hal
 	rm -fr $(@D)/hubJobTree
 	hal2assemblyHub.py --lod --bedDirs genes --jobTree $(@D)/hubJobTree $< $@ --shortLabel $(@D) --longLabel $(@D)
+	rm -fr $(@D)/hubJobTree
 
 combined.pdf: $(COALESCENCES) $(COVERAGES)
 	../plotCombinedStats.R $(subst $(SPACE),$(COMMA),$(COALESCENCES)) $(subst $(SPACE),$(COMMA),$(COVERAGES)) $(subst $(SPACE),$(COMMA),$(RUNS))

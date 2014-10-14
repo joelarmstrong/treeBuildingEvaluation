@@ -1,0 +1,4 @@
+*.pyc
+bin/*
+znfChr19Tests/**/*
+!znfChr19Tests/templateRun/*

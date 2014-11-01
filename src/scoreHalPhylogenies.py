@@ -185,7 +185,7 @@ class ScoreColumns(Target):
         for line in fastaLines:
             if len(line) != 0 and line[0] == '>':
                 numSeqs += 1
-        if numSeqs < 3:
+        if numSeqs <= 3:
             return
         fasta = "\n".join(fastaLines[1:])
 
@@ -215,7 +215,7 @@ class ScoreColumns(Target):
                 gene2speciesHandle.write("%s\t%s\n" % (header, species))
         gene2speciesHandle.close()
 
-        reconciled = popenCatch("reconcile '%s' '%s' '%s' 1 1" % (gene2speciesPath, estimatedTree, self.speciesTree))
+        reconciled = popenCatch("reconcile '%s' '%s' '%s' 0 1" % (gene2speciesPath, estimatedTree, self.speciesTree))
 
         # Score the two trees
         self.reportCorrectCoalescences(position, halTree, reconciled)
@@ -254,7 +254,7 @@ class ScoreColumns(Target):
                 # Early in hal relative to independent estimate
                 result = "early"
             if result != "identical" and self.opts.writeMismatchesToFile:
-                output.write("mismatch\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" % (halCoalescence.genome1, halCoalescence.seq1, halCoalescence.pos1, halCoalescence.genome2, halCoalescence.seq2, halCoalescence.pos2, halNewick, reconciledNewick))
+                output.write("mismatch\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" % (halCoalescence.genome1, halCoalescence.seq1, halCoalescence.pos1, halCoalescence.genome2, halCoalescence.seq2, halCoalescence.pos2, halMrca, reconciledCoalescence.mrca, result, halNewick, reconciledNewick))
             output.write("coalescence\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" % (halCoalescence.genome1, halCoalescence.seq1, halCoalescence.pos1, halCoalescence.genome2, halCoalescence.seq2, halCoalescence.pos2, result))
 
 class CoalescenceResults:

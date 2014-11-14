@@ -141,10 +141,16 @@ class Setup(Target):
         chromSizes = getChromSizes(self.opts.halFile, self.opts.refGenome)
 
         positions = []
+        # For ensuring that a column isn't counted multiple times from
+        # different reference positions.
+        positionSet = set(positions)
         for i in xrange(self.opts.numSamples):
             # Have to sample the columns here since otherwise it can
             # be difficult to independently seed several RNGs
-            positions.append(samplePosition(chromSizes))
+            pos = samplePosition(chromSizes)
+            if pos not in positionSet:
+                positions.append(pos)
+                positionSet.add(pos)
 
         outputs = []
         for sliceStart in xrange(0, self.opts.numSamples,
@@ -153,7 +159,7 @@ class Setup(Target):
             outputFile = getTempFile(rootDir=self.getGlobalTempDir())
             outputs.append(outputFile)
             self.addChildTarget(ScoreColumns(self.opts, slice,
-                                             outputFile, speciesTree))
+                                             outputFile, speciesTree, positionSet))
         self.setFollowOnTarget(Summarize(self.opts, outputs, self.opts.outputFile, self.opts.writeMismatchesToFile))
 
 class ScoreColumns(Target):
@@ -162,12 +168,13 @@ class ScoreColumns(Target):
     independently estimated tree against the one in the hal
     graph.
     """
-    def __init__(self, opts, positions, outputFile, speciesTree):
+    def __init__(self, opts, positions, outputFile, speciesTree, positionSet):
         Target.__init__(self)
         self.opts = opts
         self.positions = positions
         self.outputFile = outputFile
         self.speciesTree = speciesTree
+        self.positionSet = positionSet
 
     def run(self):
         for position in self.positions:
@@ -180,6 +187,16 @@ class ScoreColumns(Target):
         # picky (read: correct) about fasta parsing.
         fastaLines = fasta.split("\n")
         halTree = fastaLines[0][1:] # Skip '#' character.
+
+        # Ensure that we only do each column once, by looking at the
+        # ref genome's positions in the column. If this is not the
+        # lowest position that was sampled, then we should stop to
+        # avoid double-counting a column.
+        headers = [l[1:] for l in fastaLines if len(l) > 0 and l[0] == '>']
+        refGenomePoss = set((".".join(h.split("|")[0].split(".")[1:]), int(h.split("|")[-1])) for h in headers if h.split(".")[0] == self.opts.refGenome)
+        if min(refGenomePoss.intersection(self.positionSet), key=lambda x: x[1]) != position:
+            return
+
         # Check that the fasta actually has enough sequences to bother
         # with tree-building.
         numSeqs = 0

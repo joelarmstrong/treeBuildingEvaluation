@@ -16,6 +16,10 @@ static CLParserPtr initParser()
     optionsParser->addOption("refSequence", "reference sequence name (by default, a random column will be sampled)", "");
     optionsParser->addOption("refPos", "position (only valid if also using --sequence)", -1);
     optionsParser->addOption("width", "width of the region around the sampled column to extract, default = 500", 500);
+    optionsParser->addOptionFlag("lcaLabeling", "Label the ancestors with the MRCA of the child nodes instead of "
+                                 "the ancestral genome and position (useful for comparing to a reconciled tree). "
+                                 "NOTE: the ancestral sequences in the tree will not have their label changed.",
+                                 false);
     return optionsParser;
 }
 
@@ -147,12 +151,38 @@ static stTree *buildTree(ColumnIteratorConstPtr colIt)
     return tree;
 }
 
+static void relabelAncestorsToLCAOfChildren(stTree *tree, stTree *speciesTree) {
+    if (stTree_getChildNumber(tree) == 0) {
+        // Not relabeling leaves.
+        return;
+    }
+
+    stTree *curMRCA = NULL;
+    for (int64_t i = 0; i < stTree_getChildNumber(tree); i++) {
+        relabelAncestorsToLCAOfChildren(stTree_getChild(tree, i), speciesTree);
+        const char *childLabel = stTree_getLabel(stTree_getChild(tree, i));
+        // Get the first .-separated token, i.e. the genome name.
+        stList *tokens = stString_splitByString(childLabel, ".");
+        char *childSpeciesLabel = (char *) stList_get(tokens, 0);
+        stTree *childSpecies = stTree_findChild(speciesTree, childSpeciesLabel);
+        assert(childSpecies != NULL);
+        stList_destruct(tokens);
+        if (curMRCA == NULL) {
+            curMRCA = childSpecies;
+        } else {
+            curMRCA = stTree_getMRCA(curMRCA, childSpecies);
+        }
+    }
+    stTree_setLabel(tree, stTree_getLabel(curMRCA));
+}
+
 int main(int argc, char *argv[])
 {
     CLParserPtr optParser = initParser();
     string halPath, genomeName, refSequenceName;
     hal_index_t refPos = -1;
     hal_index_t width = 1000;
+    bool lcaLabeling;
     try {
         optParser->parseOptions(argc, argv);
         halPath = optParser->getArgument<string>("halFile");
@@ -160,6 +190,7 @@ int main(int argc, char *argv[])
         refSequenceName = optParser->getOption<string>("refSequence");
         refPos = optParser->getOption<hal_index_t>("refPos");
         width = optParser->getOption<hal_index_t>("width");
+        lcaLabeling = optParser->getFlag("lcaLabeling");
     } catch (exception &e) {
         cerr << e.what() << endl;
         optParser->printUsage(cerr);
@@ -168,7 +199,7 @@ int main(int argc, char *argv[])
 
     st_randomSeed(time(NULL));
 
-    AlignmentConstPtr alignment = openHalAlignment(halPath, optParser);
+    AlignmentConstPtr alignment = openHalAlignmentReadOnly(halPath, optParser);
     const Genome *genome = alignment->openGenome(genomeName);
     if (genome == NULL) {
         throw hal_exception("Genome " + genomeName + " not found in alignment");
@@ -194,8 +225,14 @@ int main(int argc, char *argv[])
 
     ColumnIteratorConstPtr colIt = genome->getColumnIterator(NULL, 0, refPos, NULL_INDEX, false, true);
 
+    stTree *colTree = buildTree(colIt);
+    if (lcaLabeling) {
+        stTree *speciesTree = stTree_parseNewickString(alignment->getNewickTree().c_str());
+        relabelAncestorsToLCAOfChildren(colTree, speciesTree);
+    }
+
     // Print out the tree underlying this column as a FASTA comment.
-    cout << "#" << stTree_getNewickTreeString(buildTree(colIt)) << endl;
+    cout << "#" << stTree_getNewickTreeString(colTree) << endl;
 
     const ColumnIterator::ColumnMap *cols = colIt->getColumnMap();
     ColumnIterator::ColumnMap::const_iterator colMapIt;

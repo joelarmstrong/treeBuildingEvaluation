@@ -62,6 +62,7 @@ def sampleCoalescences(tree, maxCoalescences):
         numSamples = 0
         while numSamples < maxCoalescences:
             pair = random.sample(validNames, 2)
+            pair.sort()
             pair = (pair[0], pair[1])
             if pair not in pairs:
                 pairs.add(pair)

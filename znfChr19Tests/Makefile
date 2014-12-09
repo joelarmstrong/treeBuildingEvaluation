@@ -16,7 +16,7 @@ hubs: $(HUBS)
 
 %/znfChr19.hal: %/cactus_progressive_config.xml %/znfChr19.txt
 	rm -fr $(@D)/work
-	$(PROGRESSIVE_CACTUS) --config $(@D)/cactus_progressive_config.xml $(@D)/znfChr19.txt $(@D)/work $@ --maxThreads 10
+	$(PROGRESSIVE_CACTUS) --config $(@D)/cactus_progressive_config.xml $(@D)/znfChr19.txt $(@D)/work $@ --maxThreads 10 --stats
 
 %/humanCoalescences.xml: %/znfChr19.hal
 	rm -fr $(@D)/jobTree

@@ -150,13 +150,13 @@ int main(int argc, char *argv[])
 
     if (reRoot) {
         // If we actually cared about memory leaks this would be bad
-        geneTree = stPhylogeny_rootAndReconcileBinary(geneTree, speciesTree, leafToSpecies);
+        geneTree = stPhylogeny_rootByReconciliationAtMostBinary(geneTree, leafToSpecies);
         // Need to refresh the leafToSpecies map to correspond to the new tree
         leafToSpecies = getLeafToSpecies(geneTree, speciesTree, leafNameToSpeciesName);
     }
 
     // relabel the ancestors.
-    stPhylogeny_reconcileBinary(geneTree, speciesTree, leafToSpecies, true);
+    stPhylogeny_reconcileAtMostBinary(geneTree, leafToSpecies, true);
 
     if (collapseIdenticalNodes) {
         collapseIdenticalAncestors(geneTree);

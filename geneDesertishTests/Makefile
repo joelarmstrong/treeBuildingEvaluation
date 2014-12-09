@@ -16,7 +16,7 @@ hubs: $(HUBS)
 
 %/geneDesertish.hal: %/cactus_progressive_config.xml %/geneDesertish.txt
 	rm -fr $(@D)/work
-	$(PROGRESSIVE_CACTUS) --config $(@D)/cactus_progressive_config.xml $(@D)/geneDesertish.txt $(@D)/work $@ --maxThreads 10
+	$(PROGRESSIVE_CACTUS) --config $(@D)/cactus_progressive_config.xml $(@D)/geneDesertish.txt $(@D)/work $@ --maxThreads 10 --stats
 
 %/humanCoalescences.xml: %/geneDesertish.hal
 	rm -fr $(@D)/jobTree

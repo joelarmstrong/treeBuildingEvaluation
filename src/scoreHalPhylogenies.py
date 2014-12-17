@@ -7,7 +7,7 @@ from jobTree.scriptTree.target import Target
 from jobTree.scriptTree.stack import Stack
 from sonLib.bioio import system, getTempFile, popenCatch
 from sonLib.nxnewick import NXNewick
-from collections import namedtuple, defaultdict
+from collections import namedtuple, defaultdict, Counter
 import math
 import random
 
@@ -46,27 +46,40 @@ def getLeafNames(tree):
             ret.append(tree.getName(id))
     return ret
 
-def sampleCoalescences(tree, maxCoalescences):
+ColumnEntry = namedtuple('ColumnEntry', ['genome', 'seq', 'pos'])
+
+def parseColumnEntryFromString(s):
+    """Gets a ColumnEntry struct from a leaf name in a tree."""
+    return ColumnEntry(genome=s.split("|")[0].split(".")[0],
+                       seq=".".join(s.split("|")[0].split(".")[1:]),
+                       pos=int(s.split("|")[1]))
+
+def sampleCoalescences(tree, maxCoalescences, sampleNonDuplicates):
     def choose(n, k):
         return math.factorial(n) / (math.factorial(k) * math.factorial(n - k))
     nameToId = getNameToIdDict(tree)
     validNames = getLeafNames(tree)
+
+    # Find all duplicated genomes in a column
+    numGenomeAppearances = Counter(parseColumnEntryFromString(i).genome for i in validNames)
+    duplicatedGenomes = set(k for k, v in numGenomeAppearances.items() if v > 1)
+
+    # Sample up to maxCoalescences pairs. This could be very slow if
+    # maxCoalescences is high.
     pairs = set()
-    if choose(len(validNames), 2) < maxCoalescences:
-        # Just iterate through every possible pair.
-        for i, name1 in enumerate(validNames[:-1]):
-            for name2 in validNames[i+1:]:
-                pairs.add((name1, name2))
-    else:
-        # Sample maxCoalescences pairs.
-        numSamples = 0
-        while numSamples < maxCoalescences:
-            pair = random.sample(validNames, 2)
-            pair.sort()
-            pair = (pair[0], pair[1])
-            if pair not in pairs:
-                pairs.add(pair)
-                numSamples += 1
+    visited = set()
+    numPairs = choose(len(validNames), 2)
+    numSamples = 0
+    while numSamples < maxCoalescences and len(visited) != numPairs:
+        pair = random.sample(validNames, 2)
+        pair.sort()
+        pair = (pair[0], pair[1])
+        visited.add(pair)
+        duplicated = parseColumnEntryFromString(pair[0]).genome in duplicatedGenomes \
+                     or parseColumnEntryFromString(pair[1]).genome in duplicatedGenomes
+        if pair not in pairs and (sampleNonDuplicates or duplicated):
+            pairs.add(pair)
+            numSamples += 1
 
     # Create coalescences out of the pairs
     coalescences = []
@@ -74,14 +87,12 @@ def sampleCoalescences(tree, maxCoalescences):
         mrca = tree.getName(getMRCA(tree, nameToId[pair[0]], nameToId[pair[1]]))
         # Relies on the sequences being named by
         # getRegionAroundSampledColumn, i.e. genome.seq|pos
-        genome1 = pair[0].split("|")[0].split(".")[0]
-        seq1 = ".".join(pair[0].split("|")[0].split(".")[1:])
-        pos1 = pair[0].split("|")[1]
-        genome2 = pair[1].split("|")[0].split(".")[0]
-        seq2 = ".".join(pair[1].split("|")[0].split(".")[1:])
-        pos2 = pair[1].split("|")[1]
-        coalescence = Coalescence(genome1=genome1, seq1=seq1, pos1=pos1,
-                                  genome2=genome2, seq2=seq2, pos2=pos2,
+        entry1 = parseColumnEntryFromString(pair[0])
+        entry2 = parseColumnEntryFromString(pair[1])
+        coalescence = Coalescence(genome1=entry1.genome, seq1=entry1.seq,
+                                  pos1=entry1.pos,
+                                  genome2=entry2.genome, seq2=entry2.seq,
+                                  pos2=entry2.pos,
                                   mrca=mrca)
         coalescences.append(coalescence)
     return coalescences
@@ -198,13 +209,18 @@ class ScoreColumns(Target):
             return
 
         # Check that the fasta actually has enough sequences to bother
-        # with tree-building.
-        numSeqs = 0
+        # with tree-building, and make sure it's duplicated if we want
+        # only duplicated columns.
+        seqNames = []
         for line in fastaLines:
             if len(line) != 0 and line[0] == '>':
-                numSeqs += 1
-        if numSeqs <= 3:
+                seqNames.append(line[1:])
+        numGenomeAppearances = Counter(parseColumnEntryFromString(i).genome for i in seqNames)
+        duplicatedGenomes = set(k for k, v in numGenomeAppearances.items() if v > 1)
+        if len(seqNames) <= 3 or (not self.opts.nonDuplicated and len(duplicatedGenomes) == 0):
             return
+
+        # Get rid of the initial comment line containing the newick tree.
         fasta = "\n".join(fastaLines[1:])
 
         # Align the region surrounding the column.
@@ -242,7 +258,7 @@ class ScoreColumns(Target):
         output = open(self.outputFile, 'a')
         hal = NXNewick().parseString(halNewick)
         reconciled = NXNewick().parseString(reconciledNewick)
-        halCoalescences = sampleCoalescences(hal, self.opts.coalescencesPerSample)
+        halCoalescences = sampleCoalescences(hal, self.opts.coalescencesPerSample, self.opts.nonDuplicated)
         reconciledCoalescences = matchCoalescences(reconciled, halCoalescences)
         assert(len(halCoalescences) == len(reconciledCoalescences))
         for halCoalescence, reconciledCoalescence in zip(halCoalescences, reconciledCoalescences):
@@ -373,6 +389,9 @@ if __name__ == '__main__':
     parser.add_argument('--numSamples', type=int,
                         help='Number of columns to sample',
                         default=50000)
+    parser.add_argument('--nonDuplicated', action='store_true',
+                        help='sample from pairs even when neither sequence'
+                        ' is duplicated', default=False)
     parser.add_argument('--samplesPerJob', type=int,
                         help='Number of samples per jobTree job',
                         default=100)

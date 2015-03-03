@@ -98,6 +98,6 @@ print(coverageDf)
 coalescencePlot <- getCoalescencePlot(coalescenceDf, "human") + theme(axis.text.x=element_text(angle=90, hjust=1, vjust=0.5)) + theme(legend.position="top")
 coveragePlot <- getCoveragePlot(coverageDf) + theme(axis.text.x=element_text(angle=90, hjust=1, vjust=0.5))
 
-pdf("combined.pdf", width=10, height=5)
+pdf("combined.pdf", width=15, height=5)
 print(grid.arrange(coveragePlot, coalescencePlot, ncol=2))
 dev.off()

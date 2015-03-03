@@ -108,6 +108,18 @@ static bool collapseIdenticalAncestors(stTree *tree)
     return false;
 }
 
+static void relabelDupNodes(stTree *tree) {
+    stPhylogenyInfo *info = stTree_getClientData(tree);
+    stTree *species = info->recon->species;
+    if (stTree_getParent(info->recon->species) != NULL
+        && info->recon->event == DUPLICATION) {
+        stTree_setLabel(tree, stTree_getLabel(stTree_getParent(species)));
+    }
+    for (int64_t i = 0; i < stTree_getChildNumber(tree); i++) {
+        relabelDupNodes(stTree_getChild(tree, i));
+    }
+}
+
 int main(int argc, char *argv[])
 {
     int collapseIdenticalNodes = 0;
@@ -157,6 +169,10 @@ int main(int argc, char *argv[])
 
     // relabel the ancestors.
     stPhylogeny_reconcileAtMostBinary(geneTree, leafToSpecies, true);
+
+    // To compare properly against HAL, nodes reconciled to branches
+    // should be reconciled to the parent genome.
+    relabelDupNodes(geneTree);
 
     if (collapseIdenticalNodes) {
         collapseIdenticalAncestors(geneTree);

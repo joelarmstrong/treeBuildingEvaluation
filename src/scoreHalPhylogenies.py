@@ -10,6 +10,7 @@ from sonLib.nxnewick import NXNewick
 from collections import namedtuple, defaultdict, Counter
 import math
 import random
+import sys
 
 Coalescence = namedtuple('Coalescence', ['genome1', 'seq1', 'pos1', 'genome2', 'seq2', 'pos2', 'mrca'])
 
@@ -193,7 +194,7 @@ class ScoreColumns(Target):
 
     def handleColumn(self, position):
         # Get the column.
-        fasta = popenCatch("getRegionAroundSampledColumn %s %s --refSequence %s --lcaLabeling --refPos %d" % (self.opts.halFile, self.opts.refGenome, position[0], position[1]))
+        fasta = popenCatch("getRegionAroundSampledColumn %s %s --refSequence %s --refPos %d" % (self.opts.halFile, self.opts.refGenome, position[0], position[1]))
         # Take out the tree (on the first line) in case the aligner is
         # picky (read: correct) about fasta parsing.
         fastaLines = fasta.split("\n")

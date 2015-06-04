@@ -190,7 +190,8 @@ int main(int argc, char *argv[])
     stHash_destructIterator(genomeIt);
 
     // Run the actual guided neighbor-joining.
-    stTree *tree = stPhylogeny_guidedNeighborJoining(matrix, joinCosts, matrixIndexToJoinCostIndex, speciesToJoinCostIndex, speciesTree);
+    int64_t **speciesMRCAMatrix = stPhylogeny_getMRCAMatrix(speciesTree, speciesToJoinCostIndex);
+    stTree *tree = stPhylogeny_guidedNeighborJoining(matrix, joinCosts, matrixIndexToJoinCostIndex, speciesToJoinCostIndex, speciesMRCAMatrix, speciesTree);
     relabelTree(tree);
     printf("%s\n", stTree_getNewickTreeString(tree));
     return 0;

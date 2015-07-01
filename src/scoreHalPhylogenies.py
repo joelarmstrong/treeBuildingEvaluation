@@ -374,10 +374,20 @@ class Summarize(Target):
 
     def printAggregateResults(self, outputFile, results):
         total = results.identical + results.early + results.late
+        if total == 0:
+            # avoid a divide by zero. This just makes all the early,
+            # late, identical fractions 0, which should be a sensible
+            # response to getting no columns.
+            total = 1
         outputFile.write('<aggregateCoalescenceResults identical="%d" early="%d" late="%d" identicalFraction="%f" earlyFraction="%f" lateFraction="%f" />\n' % (results.identical, results.early, results.late, float(results.identical)/total, float(results.early)/total, float(results.late)/total))
 
     def printGenomeResults(self, outputFile, genomeName1, genomeName2, results):
         total = results.identical + results.early + results.late
+        if total == 0:
+            # avoid a divide by zero. This just makes all the early,
+            # late, identical fractions 0, which should be a sensible
+            # response to getting no columns.
+            total = 1
         outputFile.write('<coalescenceResults genome1="%s" genome2="%s" identical="%d" early="%d" late="%d" identicalFraction="%f" earlyFraction="%f" lateFraction="%f" />\n' % (genomeName1, genomeName2, results.identical, results.early, results.late, float(results.identical)/total, float(results.early)/total, float(results.late)/total))
 
 if __name__ == '__main__':

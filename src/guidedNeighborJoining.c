@@ -1,6 +1,7 @@
 // Run guided neighbor-joining on a input (aligned!) FASTA file using
 // the given join costs and output a tree.
 #include <getopt.h>
+#include <ctype.h>
 #include "sonLib.h"
 #include "bioioC.h"
 
@@ -33,6 +34,21 @@ static void populateHashes(const char *header, const char *seq, int64_t length)
 
     stHash_insert(globalMatrixIndexToHeader, stIntTuple_construct1(globalSeqNum), stString_copy(header));
     globalSeqNum++;
+}
+
+static stMatrix *getDistanceMatrixFromSimilarityMatrix(stMatrix *similarityMatrix) {
+    assert(stMatrix_n(similarityMatrix) == stMatrix_m(similarityMatrix));
+    stMatrix *ret = stMatrix_construct(stMatrix_n(similarityMatrix), stMatrix_m(similarityMatrix));
+    for (int64_t i = 0; i < stMatrix_n(ret); i++) {
+        for (int64_t j = i + 1; j < stMatrix_m(ret); j++) {
+            double similarities = *stMatrix_getCell(similarityMatrix, i, j);
+            double differences = *stMatrix_getCell(similarityMatrix, j, i);
+            double count = similarities + differences;
+            *stMatrix_getCell(ret, i, j) = (count != 0.0) ? differences / count : INT64_MAX;
+            *stMatrix_getCell(ret, j, i) = (count != 0.0) ? differences / count : INT64_MAX;
+        }
+    }
+    return ret;
 }
 
 // Relabel a tree labeled by matrix indices in-place.
@@ -191,7 +207,7 @@ int main(int argc, char *argv[])
 
     // Run the actual guided neighbor-joining.
     int64_t **speciesMRCAMatrix = stPhylogeny_getMRCAMatrix(speciesTree, speciesToJoinCostIndex);
-    stTree *tree = stPhylogeny_guidedNeighborJoining(matrix, joinCosts, matrixIndexToJoinCostIndex, speciesToJoinCostIndex, speciesMRCAMatrix, speciesTree);
+    stTree *tree = stPhylogeny_guidedNeighborJoining(getDistanceMatrixFromSimilarityMatrix(matrix), matrix, joinCosts, matrixIndexToJoinCostIndex, speciesToJoinCostIndex, speciesMRCAMatrix, speciesTree);
     relabelTree(tree);
     printf("%s\n", stTree_getNewickTreeString(tree));
     return 0;

@@ -8,26 +8,24 @@
 using namespace std;
 using namespace hal;
 
-static CLParserPtr initParser()
+static void initParser(CLParser &optionsParser)
 {
-    CLParserPtr optionsParser = hdf5CLParserInstance(true);
-    optionsParser->addArgument("halFile", "target hal file");
-    optionsParser->addArgument("genome", "reference genome");
-    optionsParser->addOption("refSequence", "reference sequence name (by default, a random column will be sampled)", "");
-    optionsParser->addOption("refPos", "position (only valid if also using --sequence)", -1);
-    optionsParser->addOption("width", "width of the region around the sampled column to extract, default = 500", 500);
-    optionsParser->addOptionFlag("lcaLabeling", "Label the ancestors with the MRCA of the child nodes instead of "
+    optionsParser.addArgument("halFile", "target hal file");
+    optionsParser.addArgument("genome", "reference genome");
+    optionsParser.addOption("refSequence", "reference sequence name (by default, a random column will be sampled)", "");
+    optionsParser.addOption("refPos", "position (only valid if also using --sequence)", -1);
+    optionsParser.addOption("width", "width of the region around the sampled column to extract, default = 500", 500);
+    optionsParser.addOptionFlag("lcaLabeling", "Label the ancestors with the MRCA of the child nodes instead of "
                                  "the ancestral genome and position (useful for comparing to a reconciled tree). "
                                  "NOTE: the ancestral sequences in the tree will not have their label changed.",
                                  false);
-    return optionsParser;
 }
 
 // Adapted from the hal2maf block-tree building code.
 // Could put this general version into the column iterator interface.
 
 // Builds a "gene"-tree node and labels it properly.
-static stTree *getTreeNode(SegmentIteratorConstPtr segIt)
+static stTree *getTreeNode(SegmentIteratorPtr segIt)
 {
     // Make sure the segment is sliced to only 1 base.
     assert(segIt->getStartPosition() == segIt->getEndPosition());
@@ -52,32 +50,32 @@ static stTree *getTreeNode(SegmentIteratorConstPtr segIt)
 // Recursive part of buildTree
 // tree parameter represents node corresponding to the genome with
 // bottom segment botIt
-static void buildTreeR(BottomSegmentIteratorConstPtr botIt, stTree *tree)
+static void buildTreeR(BottomSegmentIteratorPtr botIt, stTree *tree)
 {
     const Genome *genome = botIt->getGenome();
 
     // attach a node and recurse for each of this segment's children
     // (and paralogous segments)
-    for (hal_size_t i = 0; i < botIt->getNumChildren(); i++) {
-        if (botIt->hasChild(i)) {
+    for (hal_size_t i = 0; i < botIt->bseg()->getNumChildren(); i++) {
+        if (botIt->bseg()->hasChild(i)) {
             const Genome *child = genome->getChild(i);
-            TopSegmentIteratorConstPtr topIt = child->getTopSegmentIterator();
+            TopSegmentIteratorPtr topIt = child->getTopSegmentIterator();
             topIt->toChild(botIt, i);
             stTree *canonicalParalog = getTreeNode(topIt);
             stTree_setParent(canonicalParalog, tree);
-            if (topIt->hasParseDown()) {
-                BottomSegmentIteratorConstPtr childBotIt = child->getBottomSegmentIterator();
+            if (topIt->tseg()->hasParseDown()) {
+                BottomSegmentIteratorPtr childBotIt = child->getBottomSegmentIterator();
                 childBotIt->toParseDown(topIt);
                 buildTreeR(childBotIt, canonicalParalog);
             }
             // Traverse the paralogous segments cycle and add those segments as well
-            if (topIt->hasNextParalogy()) {
+            if (topIt->tseg()->hasNextParalogy()) {
                 topIt->toNextParalogy();
-                while(!topIt->isCanonicalParalog()) {
+                while(!topIt->tseg()->isCanonicalParalog()) {
                     stTree *paralog = getTreeNode(topIt);
                     stTree_setParent(paralog, tree);
-                    if(topIt->hasParseDown()) {
-                        BottomSegmentIteratorConstPtr childBotIt = child->getBottomSegmentIterator();
+                    if(topIt->tseg()->hasParseDown()) {
+                        BottomSegmentIteratorPtr childBotIt = child->getBottomSegmentIterator();
                         childBotIt->toParseDown(topIt);
                         buildTreeR(childBotIt, paralog);
                     }
@@ -95,7 +93,7 @@ static void buildTreeR(BottomSegmentIteratorConstPtr botIt, stTree *tree)
 }
 
 // Build a gene-tree from a column iterator.
-static stTree *buildTree(ColumnIteratorConstPtr colIt)
+static stTree *buildTree(ColumnIteratorPtr colIt)
 {
     // Get any base from the column to begin building the tree
     const ColumnIterator::ColumnMap *colMap = colIt->getColumnMap();
@@ -116,8 +114,8 @@ static stTree *buildTree(ColumnIteratorConstPtr colIt)
     const Genome *genome = sequence->getGenome();
 
     // Get the bottom segment that is the common ancestor of all entries
-    TopSegmentIteratorConstPtr topIt = genome->getTopSegmentIterator();
-    BottomSegmentIteratorConstPtr botIt;
+    TopSegmentIteratorPtr topIt = genome->getTopSegmentIterator();
+    BottomSegmentIteratorPtr botIt;
     if (genome->getNumTopSegments() == 0) {
         // The reference is the root genome.
         botIt = genome->getBottomSegmentIterator();
@@ -125,11 +123,11 @@ static stTree *buildTree(ColumnIteratorConstPtr colIt)
     } else {
         // Keep heading up the tree until we hit the root segment.
         topIt->toSite(index);
-        while (topIt->hasParent()) {
+        while (topIt->tseg()->hasParent()) {
             const Genome *parent = topIt->getGenome()->getParent();
             botIt = parent->getBottomSegmentIterator();
             botIt->toParent(topIt);
-            if(parent->getParent() == NULL || !botIt->hasParseUp()) {
+            if(parent->getParent() == NULL || !botIt->bseg()->hasParseUp()) {
                 // Reached root genome
                 break;
             }
@@ -139,7 +137,7 @@ static stTree *buildTree(ColumnIteratorConstPtr colIt)
     }
 
     stTree *tree = NULL;
-    if(topIt->hasParent() == false && topIt->getGenome() == genome && genome->getNumBottomSegments() == 0) {
+    if(topIt->tseg()->hasParent() == false && topIt->getGenome() == genome && genome->getNumBottomSegments() == 0) {
         // Handle insertions in leaves. botIt doesn't point anywhere since
         // there are no bottom segments.
         tree = getTreeNode(topIt);
@@ -178,28 +176,29 @@ static void relabelAncestorsToLCAOfChildren(stTree *tree, stTree *speciesTree) {
 
 int main(int argc, char *argv[])
 {
-    CLParserPtr optParser = initParser();
+    CLParser optParser;
+    initParser(optParser);
     string halPath, genomeName, refSequenceName;
     hal_index_t refPos = -1;
     hal_index_t width = 1000;
     bool lcaLabeling;
     try {
-        optParser->parseOptions(argc, argv);
-        halPath = optParser->getArgument<string>("halFile");
-        genomeName = optParser->getArgument<string>("genome");
-        refSequenceName = optParser->getOption<string>("refSequence");
-        refPos = optParser->getOption<hal_index_t>("refPos");
-        width = optParser->getOption<hal_index_t>("width");
-        lcaLabeling = optParser->getFlag("lcaLabeling");
+        optParser.parseOptions(argc, argv);
+        halPath = optParser.getArgument<string>("halFile");
+        genomeName = optParser.getArgument<string>("genome");
+        refSequenceName = optParser.getOption<string>("refSequence");
+        refPos = optParser.getOption<hal_index_t>("refPos");
+        width = optParser.getOption<hal_index_t>("width");
+        lcaLabeling = optParser.getFlag("lcaLabeling");
     } catch (exception &e) {
         cerr << e.what() << endl;
-        optParser->printUsage(cerr);
+        optParser.printUsage(cerr);
         return 1;
     }
 
     st_randomSeed(time(NULL));
 
-    AlignmentConstPtr alignment = openHalAlignmentReadOnly(halPath, optParser);
+    AlignmentConstPtr alignment(openHalAlignment(halPath, &optParser));
     const Genome *genome = alignment->openGenome(genomeName);
     if (genome == NULL) {
         throw hal_exception("Genome " + genomeName + " not found in alignment");
@@ -223,7 +222,7 @@ int main(int argc, char *argv[])
 
     char *outputSeq = (char *) malloc((width*2 + 2) * sizeof(char));
 
-    ColumnIteratorConstPtr colIt = genome->getColumnIterator(NULL, 0, refPos, NULL_INDEX, false, true);
+    ColumnIteratorPtr colIt = genome->getColumnIterator(NULL, 0, refPos, NULL_INDEX, false, true);
 
     stTree *colTree = buildTree(colIt);
     if (lcaLabeling) {
@@ -246,7 +245,7 @@ int main(int argc, char *argv[])
         hal_index_t seqStart = seq->getStartPosition();
         hal_index_t seqEnd = seqStart + seq->getSequenceLength(); // exclusive.
         for (ColumnIterator::DNASet::const_iterator dnaIt = colMapIt->second->begin(); dnaIt != colMapIt->second->end(); dnaIt++) {
-            DNAIteratorConstPtr dna = *dnaIt;
+            DnaIteratorPtr dna = *dnaIt;
             hal_index_t midpoint = dna->getArrayIndex();
             hal_index_t startPos = (dna->getReversed()) ? midpoint + width : midpoint - width;
             if (startPos < seqStart) {
@@ -271,7 +270,7 @@ int main(int argc, char *argv[])
             dna->setReversed(reversed);
 
             for(int64_t i = 0; i < (int64_t) size; i++, dna->toRight()) {
-                outputSeq[i] = dna->getChar();
+                outputSeq[i] = dna->getBase();
             }
             outputSeq[size] = '\0';
 

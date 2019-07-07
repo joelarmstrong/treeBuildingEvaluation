@@ -77,7 +77,7 @@ def sampleCoalescences(tree, maxCoalescences, sampleNonDuplicates):
         pair = (pair[0], pair[1])
         visited.add(pair)
         duplicated = parseColumnEntryFromString(pair[0]).genome in duplicatedGenomes \
-                     or parseColumnEntryFromString(pair[1]).genome in duplicatedGenomes
+                     and parseColumnEntryFromString(pair[1]).genome in duplicatedGenomes
         if pair not in pairs and (sampleNonDuplicates or duplicated):
             pairs.add(pair)
             numSamples += 1
@@ -401,8 +401,8 @@ if __name__ == '__main__':
                         help='Number of columns to sample',
                         default=50000)
     parser.add_argument('--nonDuplicated', action='store_true',
-                        help='sample from pairs even when neither sequence'
-                        ' is duplicated', default=False)
+                        help='remove only-duplicated restriction on coalescence pairs',
+                        default=False)
     parser.add_argument('--samplesPerJob', type=int,
                         help='Number of samples per jobTree job',
                         default=100)

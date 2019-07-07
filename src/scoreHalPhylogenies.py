@@ -266,6 +266,8 @@ class ScoreColumns(Target):
         reconciled = NXNewick().parseString(reconciledNewick)
         if self.opts.onlySelf:
             requiredPosition = ColumnEntry(self.opts.refGenome, position[0], position[1])
+        else:
+            requiredPosition = None
         halCoalescences = sampleCoalescences(hal, self.opts.coalescencesPerSample, self.opts.nonDuplicated, requiredPosition)
         reconciledCoalescences = matchCoalescences(reconciled, halCoalescences)
         assert(len(halCoalescences) == len(reconciledCoalescences))

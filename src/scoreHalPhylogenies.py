@@ -55,7 +55,7 @@ def parseColumnEntryFromString(s):
                        seq=".".join(s.split("|")[0].split(".")[1:]),
                        pos=int(s.split("|")[1]))
 
-def sampleCoalescences(tree, maxCoalescences, sampleNonDuplicates):
+def sampleCoalescences(tree, maxCoalescences, sampleNonDuplicates, requiredPosition=None):
     def choose(n, k):
         return math.factorial(n) / (math.factorial(k) * math.factorial(n - k))
     nameToId = getNameToIdDict(tree)
@@ -69,10 +69,15 @@ def sampleCoalescences(tree, maxCoalescences, sampleNonDuplicates):
     # maxCoalescences is high.
     pairs = set()
     visited = set()
-    numPairs = choose(len(validNames), 2)
+    if requiredPosition is None:
+        numPairs = choose(len(validNames), 2)
+    else:
+        numPairs = len(validNames) - 1
     numSamples = 0
     while numSamples < maxCoalescences and len(visited) != numPairs:
         pair = random.sample(validNames, 2)
+        if requiredPosition is not None and pair[1] != "%s.%s|%s" % requiredPosition:
+            pair[0] = "%s.%s|%s" % requiredPosition
         pair.sort()
         pair = (pair[0], pair[1])
         visited.add(pair)
@@ -259,7 +264,9 @@ class ScoreColumns(Target):
         output = open(self.outputFile, 'a')
         hal = NXNewick().parseString(halNewick)
         reconciled = NXNewick().parseString(reconciledNewick)
-        halCoalescences = sampleCoalescences(hal, self.opts.coalescencesPerSample, self.opts.nonDuplicated)
+        if self.opts.onlySelf:
+            requiredPosition = ColumnEntry(self.opts.refGenome, position[0], position[1])
+        halCoalescences = sampleCoalescences(hal, self.opts.coalescencesPerSample, self.opts.nonDuplicated, requiredPosition)
         reconciledCoalescences = matchCoalescences(reconciled, halCoalescences)
         assert(len(halCoalescences) == len(reconciledCoalescences))
         for halCoalescence, reconciledCoalescence in zip(halCoalescences, reconciledCoalescences):
@@ -409,6 +416,8 @@ if __name__ == '__main__':
     parser.add_argument('--coalescencesPerSample', type=int,
                         help='maximum number of coalescences to sample per column',
                         default=10)
+    parser.add_argument('--onlySelf', default=False, action='store_true',
+                        help='only sample coalescences including the sampled position')
     parser.add_argument('--width', type=int,
                         help='Width of region to extract around the'
                         ' sampled columns',  default=500)
